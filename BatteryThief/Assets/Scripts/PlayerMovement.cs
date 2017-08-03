@@ -38,95 +38,132 @@ public class PlayerMovement : MonoBehaviour {
     private Animator _animator;
     [SerializeField]
     private ParticleSystem _particles;
+    [SerializeField]
+    private float _deadDelay;
+    private bool _dead;
+    private float _deadTime;
 
     // Use this for initialization
     void Start () {
+        _dead = false;
         _animator = transform.GetComponent<Animator>();
         _sounds = transform.GetComponents<AudioSource>();
         _charge = _maxCharge;
         _rig = transform.GetComponent<Rigidbody2D>();
         _canBounce = true;
         _energyLoseTime = Time.time + _energyLoseFreq;
-        _highScore.text = System.IO.File.ReadAllText("Assets/Resources/" + FileName + ".txt"); ;
+        if (File.Exists("./Score.txt"))
+        {
+            _highScore.text = System.IO.File.ReadAllText("./Score.txt");
+        }
+        else
+        {
+            System.IO.File.WriteAllText("./Score.txt", "0");
+            _highScore.text = "0";
+        }
+
         _canMove = true;
         _rig.velocity = new Vector2(_velocity, _rig.velocity.y);
     }
 	
 	// Update is called once per frame
 	void Update () {
-        
-        //Dead
-        if (_charge <= 0 || transform.position.y < -0.17f)
+        if (!_dead)
         {
-            Die();
-        }
-
-        //Setting score UI
-        _score.text = ""+(int)transform.position.x;
-
-        //Running out of power
-        if (Time.time > _energyLoseTime)
-        {
-            if (_charge > 0)
+            //Dead
+            if (_charge <= 0 || transform.position.y < -0.17f)
             {
-                _sounds[4].Play();
-                _charge--;
-                _energyBar.transform.localScale = new Vector2(_energyBar.transform.localScale.x, _charge);
                 
+                //transform.Rotate(new Vector3(0, 0,90));
+                
+                _dead = true;
+
             }
-            _energyLoseTime = Time.time + _energyLoseFreq;
-        }
 
-        //constant velocity
-        _rig.AddForce(Vector2.right * _velocity * 4);
-        if(_rig.velocity.x > _velocity) _rig.velocity = new Vector2(_velocity, _rig.velocity.y);
+            //Setting score UI
+            _score.text = "" + (int)transform.position.x;
+
+            //Running out of power
+            if (Time.time > _energyLoseTime)
+            {
+                if (_charge > 0)
+                {
+                    _sounds[4].Play();
+                    _charge--;
+                    _energyBar.transform.localScale = new Vector2(_energyBar.transform.localScale.x, _charge);
+
+                }
+                _energyLoseTime = Time.time + _energyLoseFreq;
+            }
+
+            //constant velocity
+            _rig.AddForce(Vector2.right * _velocity * 4);
+            if (_rig.velocity.x > _velocity) _rig.velocity = new Vector2(_velocity, _rig.velocity.y);
 
 
-        //Inputs
-        if (Input.GetKeyDown(KeyCode.UpArrow))
-        {
-            //_highScore.text = _scoreFile.text;
+            //Inputs
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                //_highScore.text = _scoreFile.text;
+                if (IsGrounded())
+                {
+                    _sounds[1].Play();
+                    _rig.AddForce(Vector2.up * _jumpForce);
+                }
+
+            }
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                if (_charge > 0)
+                {
+                    _particles.Play();
+                    ParticleSystem.EmissionModule em = _particles.emission;
+                    em.enabled = true;
+                    _sounds[2].Play();
+                    _charge--;
+                    _energyBar.transform.localScale = new Vector2(_energyBar.transform.localScale.x, _charge);
+                    _rig.AddForce(Vector2.up * _jumpForce * 1.5f);
+                    _canMove = true;
+                }
+
+
+            }
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+
+            }
+
+            //Audio
             if (IsGrounded())
             {
-                _sounds[1].Play();
-                _rig.AddForce(Vector2.up * _jumpForce);
+                if (!_sounds[0].isPlaying) _sounds[0].Play();
             }
-           
-        }
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            if(_charge > 0)
+            else
             {
-                _particles.Play();
-                ParticleSystem.EmissionModule em = _particles.emission;
-                em.enabled = true;
-                _sounds[2].Play();
-                _charge--;
-                _energyBar.transform.localScale = new Vector2(_energyBar.transform.localScale.x, _charge);
-                _rig.AddForce(Vector2.up * _jumpForce * 1.5f);
-                _canMove = true;
+                if (_sounds[0].isPlaying) _sounds[0].Stop();
             }
-            
 
-        }
-        if (Input.GetKeyDown(KeyCode.DownArrow))
-        {
-
-        }
-
-        //Audio
-        if (IsGrounded())
-        {
-            if(!_sounds[0].isPlaying) _sounds[0].Play();
+            //animation
+            _animator.SetBool("isGrounded", IsGrounded());
+            _animator.SetFloat("yVel", _rig.velocity.y);
         }
         else
         {
-            if (_sounds[0].isPlaying) _sounds[0].Stop();
-        }
+            if(_deadTime == 0)_deadTime = Time.time + _deadDelay;
+            if (_rig != null)
+            {
+                _sounds[5].Play();
+                Destroy(_rig);
+                _rig = null;
+                _animator.SetBool("isGrounded", false);
+                _animator.SetFloat("yVel", -1);
+               
+            }
+            if (Time.time > _deadTime) Die();
 
-        //animation
-        _animator.SetBool("isGrounded", IsGrounded());
-        _animator.SetFloat("yVel", _rig.velocity.y);
+
+        }
+        
 
     }
 
@@ -175,7 +212,8 @@ public class PlayerMovement : MonoBehaviour {
             Destroy(other.gameObject);
         }else if (other.tag == "Danger")
         {
-            Die();
+            _dead = true;
+           
         }
     }
 
@@ -186,15 +224,15 @@ public class PlayerMovement : MonoBehaviour {
         
         if (IntParseFast(_highScore.text) < (int)transform.position.x)
         {
-            
-            AppendString(((int)transform.position.x).ToString());
+            System.IO.File.WriteAllText("./Score.txt", ((int)transform.position.x).ToString());
+            //AppendString(((int)transform.position.x).ToString());
         }
         Application.LoadLevel(Application.loadedLevel);
     }
     public static int IntParseFast(string value)
     {
         int result = 0;
-        for (int i = 0; i < value.Length - 2; i++)
+        for (int i = 0; i < value.Length; i++)
         {
            
             char letter = value[i];
